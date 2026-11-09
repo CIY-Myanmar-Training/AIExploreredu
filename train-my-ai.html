@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Train My Own AI</title>
+<link rel="stylesheet" href="assets/common.css">
+<style>
+  .layout{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px}
+  @media (max-width:900px){.layout{grid-template-columns:1fr}}
+  .cam{position:relative;border:4px solid var(--ink);border-radius:18px;overflow:hidden;background:#000;aspect-ratio:4/3}
+  .cam video{width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:block}
+  .guess{position:absolute;left:0;right:0;bottom:0;background:rgba(29,39,102,.88);color:#fff;padding:10px 14px}
+  .guess .what{font-size:15px;opacity:.85}
+  .guess .name{font-size:30px;font-weight:700;line-height:1.1}
+  .guess .bar{height:12px;border-radius:999px;background:rgba(255,255,255,.25);margin-top:6px;overflow:hidden}
+  .guess .bar i{display:block;height:100%;width:0;background:#FFE16A;transition:width .15s}
+  .names{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .names label{font-weight:700}
+  input.txt{font:inherit;font-size:20px;padding:8px 12px;border:3px solid var(--ink);border-radius:12px;min-width:0;width:100%;background:#fff;color:var(--ink)}
+  .cls{border:3px solid var(--ink);border-radius:16px;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px}
+  .cls .top{display:grid;grid-template-columns:44px 1fr;gap:10px;align-items:center}
+  .cls .badge{width:44px;height:44px;border-radius:12px;background:var(--cream);border:2px solid var(--ink);color:var(--ink);font-weight:700;font-size:26px;display:flex;align-items:center;justify-content:center}
+  .cls .row2{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .teach{user-select:none;-webkit-user-select:none;touch-action:none}
+  .teach.on{background:var(--pink);color:#fff;transform:translateY(3px)}
+  .thumbs{display:flex;gap:6px;min-height:44px}
+  .thumbs canvas{width:58px;height:44px;border:2px solid var(--ink);border-radius:8px;background:#ddd}
+  .cnt{font-size:16px;opacity:.8;min-width:110px}
+  .testbox{border:3px dashed var(--ink);border-radius:16px;padding:14px;background:var(--cream)}
+  .streak{display:flex;gap:8px;margin:8px 0}
+  .streak i{width:34px;height:34px;border:3px solid var(--ink);border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-style:normal;font-size:18px}
+  .streak i.ok{background:#3BB273;color:#fff}
+  .verdict{font-size:22px;font-weight:700;margin:6px 0}
+  .tip{font-size:16px;line-height:1.4;margin:6px 0 0}
+  .err{background:#FDEDED;border:3px dashed var(--red);border-radius:14px;padding:14px;font-size:17px;margin-top:12px}
+  .missions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:16px 0 4px;text-align:left}
+  @media (max-width:760px){.missions{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  .mbtn{font:inherit;color:var(--ink);background:#fff;border:3px solid var(--ink);border-radius:16px;padding:12px 14px;cursor:pointer;display:flex;flex-direction:column;gap:4px;box-shadow:0 4px 0 var(--ink)}
+  .mbtn:hover{background:var(--cream)}
+  .mbtn:active{transform:translateY(3px);box-shadow:0 1px 0 var(--ink)}
+  .mbtn .mno{font-size:13px;letter-spacing:1.5px;font-weight:700;opacity:.6}
+  .mbtn .mic{font-size:34px;line-height:1.1}
+  .mbtn .mt{font-size:19px;font-weight:700;line-height:1.2}
+  .mbtn .lv{font-size:13px;font-weight:700;align-self:flex-start;border:2px solid var(--ink);border-radius:999px;padding:1px 9px}
+  .privacy{font-size:14px;opacity:.75;margin-top:8px}
+  /* certificate (hidden on screen, shown when printing) */
+  #cert{display:none}
+  @media print{
+    body > *:not(#cert){display:none !important}
+    #cert{display:block !important;width:100%;height:100vh;box-sizing:border-box;padding:18mm;font-family:Georgia,"Times New Roman",serif;color:#1F2A44;background:#fff}
+    #cert .frame{border:3px double #1F2A44;height:100%;box-sizing:border-box;padding:16mm 14mm;display:flex;flex-direction:column;justify-content:space-between;text-align:center}
+    #cert small{font-family:Arial,sans-serif;letter-spacing:3px;font-size:11pt;color:#2F4A7A;font-weight:700}
+    #cert h1{font-size:34pt;margin:6mm 0}
+    #cert p{font-size:16pt;line-height:1.5;margin:3mm 0}
+    #cert .line{display:flex;justify-content:space-between;gap:20mm;font-size:13pt;font-family:Arial,sans-serif}
+    #cert .line span{flex:1;border-top:1.5px solid #1F2A44;padding-top:2mm}
+    @page{size:A4 landscape;margin:0}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mission"><span class="tag" data-t="mission"></span><span data-t="missionText"></span></div>
+
+  <!-- 0: camera -->
+  <div class="panel center" id="s0">
+    <div style="font-size:80px">📷🤖</div>
+    <h2 data-t="introTitle"></h2>
+    <p data-t="introText"></p>
+    <div class="missions" id="missions"></div>
+    <p class="privacy" data-t="privacy"></p>
+    <div class="err hidden" id="camErr"></div>
+  </div>
+
+  <!-- 1: teach + test -->
+  <div class="layout hidden" id="s1">
+    <div class="panel">
+      <span class="step-label" data-t="camLabel"></span>
+      <div class="cam"><video id="video" autoplay playsinline muted></video>
+        <div class="guess"><div class="what" data-t="iThink"></div><div class="name" id="gName">…</div><div class="bar"><i id="gBar"></i></div></div></div>
+      <p class="tip" data-t="camTip"></p>
+    </div>
+
+    <div class="panel" style="display:flex;flex-direction:column;gap:12px">
+      <span class="step-label" data-t="step1"></span>
+      <div class="names"><label for="aiName" data-t="nameLabel"></label></div>
+      <input class="txt" id="aiName" maxlength="14" value="Robo" autocomplete="off">
+      <div id="classes" style="display:flex;flex-direction:column;gap:10px"></div>
+      <button class="btn small" id="addCls" data-t="addBtn"></button>
+
+      <div class="testbox hidden" id="testBox">
+        <span class="step-label" data-t="step2"></span>
+        <p style="margin:6px 0" data-t="testText"></p>
+        <div class="streak" id="streak"><i></i><i></i><i></i></div>
+        <button class="btn pink" id="ask" data-t="askBtn"></button>
+        <div id="answer" class="hidden">
+          <div class="verdict" id="verdict"></div>
+          <div class="row"><button class="btn cyan" id="yes" data-t="yesBtn"></button><button class="btn orange" id="no" data-t="noBtn"></button></div>
+        </div>
+        <p class="tip" id="testTip"></p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- printable certificate -->
+<div id="cert">
+  <div class="frame">
+    <div><small>AI EXPLORER · CIY CLUB MYANMAR × SCOPEIT EDUCATION</small></div>
+    <div>
+      <h1>Certificate of AI Training</h1>
+      <p>This certifies that the AI named</p>
+      <p style="font-size:26pt"><b id="cName">Robo</b></p>
+      <p id="cText"></p>
+    </div>
+    <div>
+      <div class="line"><span>Trained by (name)</span><span>Date</span><span>Coach or volunteer</span></div>
+      <p style="font-size:10pt;margin-top:6mm;color:#4A5468">Created by Coach Penny</p>
+    </div>
+  </div>
+</div>
+
+<script src="assets/common.js"></script>
+<script>
+const T = {
+  title: { en: "Train My Own AI" },
+  missionText: { en: "Pick a mission card. Teach the computer, then test it. Get 3 right in a row." },
+  introTitle: { en: "Build your own AI!" },
+  introText: { en: "Choose the mission on your card. You will show examples to the camera so the computer can learn. Then you test it." },
+  privacy: { en: "The pictures stay on this laptop. Nothing is saved or sent anywhere." },
+  camLabel: { en: "YOUR CAMERA" },
+  iThink: { en: "My AI thinks it is:" },
+  camTip: { en: "Use a plain background and good light. Hold one thing up, close to the camera." },
+  step1: { en: "STEP 1 · TEACH YOUR AI" },
+  nameLabel: { en: "Give your AI a name (not your own name):" },
+  addBtn: { en: "➕ Add a third thing" },
+  step2: { en: "STEP 2 · TEST YOUR AI" },
+  testText: { en: "Hold up one of your things and press Ask. Is your AI right? Get 3 right in a row." },
+  askBtn: { en: "❓ Ask my AI" },
+  yesBtn: { en: "✔ Yes, right!" },
+  noBtn: { en: "✘ No, wrong" }
+};
+
+const NEED = 15;           // examples needed per thing before testing
+const W = 16, H = 12, K = 5, MAXS = 120;
+const grab = document.createElement("canvas"); grab.width = W; grab.height = H;
+const gctx = grab.getContext("2d", { willReadFrequently: true });
+const video = document.getElementById("video");
+const MISSIONS = [
+  { title: "Thumbs up or down", level: "Easy", names: ["thumbs up", "thumbs down"], icons: ["👍", "👎"],
+    tip: "Hold your hand close to the camera." },
+  { title: "Happy or sad", level: "Easy", names: ["happy", "sad"], icons: ["😀", "😢"],
+    tip: "Make big faces and come close to the camera." },
+  { title: "Awake or asleep", level: "Medium", names: ["awake", "asleep"], icons: ["😮", "😴"],
+    tip: "Asleep: close your eyes and tilt your head." },
+  { title: "Rock, paper, scissors", level: "Hard", names: ["rock", "paper", "scissors"], icons: ["✊", "✋", "✌️"],
+    tip: "Three things need more examples. Hold your hand close." },
+  { title: "Is anyone there?", level: "Easy", names: ["someone", "nobody"], icons: ["🙋", "🪑"],
+    tip: "For nobody, step out of the picture while you teach." },
+  { title: "My own things", level: "Free choice", names: ["pen", "bottle", "book"], icons: ["A", "B", "C"], free: true,
+    tip: "Pick two or three things you have with you." }
+];
+let M = MISSIONS[5];
+let classes = [];          // { name, samples:[Float32Array], thumbs:HTMLElement, ... }
+let stream = null, teachingIdx = -1, teachTimer = null;
+let streak = 0, asked = null;
+
+/* ---- tiny "AI": colour + shape of a very small picture, then the nearest examples vote ---- */
+function features(v) {
+  gctx.drawImage(v, 0, 0, W, H);
+  const d = gctx.getImageData(0, 0, W, H).data;
+  const n = W * H * 3, f = new Float32Array(n);
+  let mean = 0, j = 0;
+  for (let i = 0; i < W * H; i++) { for (let c = 0; c < 3; c++) { f[j] = d[i * 4 + c]; mean += f[j]; j++; } }
+  mean /= n;
+  let norm = 0;
+  for (let i = 0; i < n; i++) { f[i] -= mean; norm += f[i] * f[i]; }
+  norm = Math.sqrt(norm) || 1;
+  for (let i = 0; i < n; i++) f[i] /= norm;
+  return f;
+}
+function dist(a, b) { let s = 0; for (let i = 0; i < a.length; i++) { const x = a[i] - b[i]; s += x * x; } return s; }
+function predict() {
+  if (!video.videoWidth || classes.length < 2) return null;
+  if (classes.some(c => c.samples.length < 3)) return null;
+  const f = features(video), all = [];
+  classes.forEach((c, ci) => c.samples.forEach(s => all.push([dist(f, s), ci])));
+  all.sort((a, b) => a[0] - b[0]);
+  const k = Math.min(K, all.length), votes = new Array(classes.length).fill(0);
+  for (let i = 0; i < k; i++) votes[all[i][1]]++;
+  let best = 0; votes.forEach((v, i) => { if (v > votes[best]) best = i; });
+  return { idx: best, conf: votes[best] / k };
+}
+
+/* ---- screens ---- */
+document.getElementById("missions").innerHTML = MISSIONS.map((m, i) => `
+  <button class="mbtn" data-m="${i}"><span class="mno">MISSION ${i + 1}</span>
+    <span class="mic">${m.free ? "📦" : m.icons.join(" ")}</span>
+    <span class="mt">${m.title}</span><span class="lv">${m.level}</span></button>`).join("");
+document.querySelectorAll(".mbtn").forEach(b => b.onclick = () => start(MISSIONS[+b.dataset.m], +b.dataset.m + 1));
+
+async function start(m, no) {
+  M = m;
+  document.querySelector(".mission [data-t=missionText]").textContent =
+    "Mission " + no + ": " + m.title + ". Teach your AI " + m.names.slice(0, m.free ? 2 : m.names.length).join(" and ") + ", then get 3 right in a row.";
+  document.querySelector("[data-t=camTip]").textContent = m.tip + " Use a plain background and good light.";
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" }, audio: false });
+    video.srcObject = stream;
+    document.getElementById("s0").classList.add("hidden");
+    document.getElementById("s1").classList.remove("hidden");
+    const n = M.free ? 2 : M.names.length;
+    for (let i = 0; i < n; i++) addClass();
+    if (!M.free) document.getElementById("addCls").classList.add("hidden");
+    loop();
+  } catch (e) {
+    const err = document.getElementById("camErr");
+    err.classList.remove("hidden");
+    err.innerHTML = "The camera did not turn on. Ask the volunteer to check that the camera is allowed in the browser (the camera icon in the address bar), then reload the page.<br><small>" + (e.name || "") + "</small>";
+  }
+}
+
+function addClass() {
+  if (classes.length >= 3 || false) return;
+  const idx = classes.length;
+  const el = document.createElement("div");
+  el.className = "cls";
+  el.innerHTML = `
+    <div class="top"><div class="badge">${M.icons[idx]}</div>
+      <input class="txt" maxlength="14" value="${M.names[idx]}" aria-label="Name of thing ${"ABC"[idx]}" autocomplete="off" ${M.free ? "" : "readonly"}></div>
+    <div class="row2">
+      <button class="btn cyan teach">🖐 Hold to teach</button>
+      <div class="cnt">0 / ${NEED} examples</div>
+    </div>
+    <div class="thumbs"></div>`;
+  document.getElementById("classes").appendChild(el);
+  const c = { name: M.names[idx], samples: [], el,
+              cnt: el.querySelector(".cnt"), thumbs: el.querySelector(".thumbs"), btn: el.querySelector(".teach"), input: el.querySelector("input") };
+  c.input.oninput = () => { c.name = c.input.value.trim() || M.names[idx]; };
+  const start = e => { e.preventDefault(); startTeach(idx); };
+  const stop = () => stopTeach();
+  c.btn.addEventListener("pointerdown", start);
+  c.btn.addEventListener("pointerup", stop);
+  c.btn.addEventListener("pointerleave", stop);
+  c.btn.addEventListener("pointercancel", stop);
+  c.btn.addEventListener("contextmenu", e => e.preventDefault());
+  c.btn.addEventListener("keydown", e => { if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); if (teachingIdx < 0) startTeach(idx); } });
+  c.btn.addEventListener("keyup", e => { if (e.code === "Space" || e.code === "Enter") stopTeach(); });
+  classes.push(c);
+  if (classes.length >= 3) document.getElementById("addCls").classList.add("hidden");
+  refresh();
+}
+document.getElementById("addCls").onclick = addClass;
+
+function startTeach(idx) {
+  if (teachingIdx >= 0) return;
+  teachingIdx = idx;
+  const c = classes[idx];
+  c.btn.classList.add("on");
+  let n = 0;
+  teachTimer = setInterval(() => {
+    if (!video.videoWidth) return;
+    if (c.samples.length >= MAXS) c.samples.shift();
+    c.samples.push(features(video));
+    if (n++ % 3 === 0) addThumb(c);
+    refresh();
+  }, 100);
+}
+function stopTeach() {
+  if (teachingIdx < 0) return;
+  clearInterval(teachTimer);
+  classes[teachingIdx].btn.classList.remove("on");
+  teachingIdx = -1;
+  refresh();
+}
+function addThumb(c) {
+  const cv = document.createElement("canvas"); cv.width = 58; cv.height = 44;
+  const x = cv.getContext("2d");
+  x.translate(58, 0); x.scale(-1, 1);
+  x.drawImage(video, 0, 0, 58, 44);
+  c.thumbs.appendChild(cv);
+  while (c.thumbs.children.length > 6) c.thumbs.firstChild.remove();
+}
+function ready() { return classes.length >= 2 && classes.every(c => c.samples.length >= NEED); }
+function refresh() {
+  classes.forEach(c => { const n = c.samples.length; c.cnt.textContent = n >= NEED ? n + " examples ✔" : n + " / " + NEED + " examples"; });
+  document.getElementById("testBox").classList.toggle("hidden", !ready());
+}
+
+/* ---- live guess ---- */
+function loop() {
+  const p = predict();
+  const nm = document.getElementById("gName"), bar = document.getElementById("gBar");
+  if (!p || teachingIdx >= 0) { nm.textContent = p ? "…" : "teach me first!"; bar.style.width = "0"; }
+  else { nm.textContent = classes[p.idx].name; bar.style.width = Math.round(p.conf * 100) + "%"; }
+  requestAnimationFrame(loop);
+}
+
+/* ---- test ---- */
+document.getElementById("ask").onclick = async () => {
+  const votes = [];
+  for (let i = 0; i < 5; i++) { const p = predict(); if (p) votes.push(p.idx); await sleep(80); }
+  if (!votes.length) return;
+  const tally = new Array(classes.length).fill(0); votes.forEach(v => tally[v]++);
+  let best = 0; tally.forEach((v, i) => { if (v > tally[best]) best = i; });
+  asked = best;
+  document.getElementById("verdict").textContent = "I think it is: " + classes[best].name;
+  document.getElementById("answer").classList.remove("hidden");
+  document.getElementById("ask").classList.add("hidden");
+  document.getElementById("testTip").textContent = "";
+};
+function dots() { document.querySelectorAll("#streak i").forEach((d, i) => { d.classList.toggle("ok", i < streak); d.textContent = i < streak ? "✔" : ""; }); }
+function nextRound() { document.getElementById("answer").classList.add("hidden"); document.getElementById("ask").classList.remove("hidden"); asked = null; }
+document.getElementById("yes").onclick = () => {
+  streak++; dots(); nextRound();
+  if (streak >= 3) finish();
+  else document.getElementById("testTip").textContent = streak + " right in a row. Now try a different thing, or a different angle.";
+};
+document.getElementById("no").onclick = () => {
+  streak = 0; dots(); nextRound();
+  document.getElementById("testTip").textContent = "Your AI got confused. That is how real AI works too! Teach it more: hold the thing at different angles, closer and further away.";
+};
+
+function finish() {
+  const total = classes.reduce((a, c) => a + c.samples.length, 0);
+  const aiName = document.getElementById("aiName").value.trim() || "Robo";
+  document.getElementById("cName").textContent = aiName;
+  const names = classes.map(c => c.name);
+  document.getElementById("cText").textContent = "learned to tell " + names.slice(0, -1).join(", ") + " from " + names[names.length - 1] + " after seeing " + total + " examples, and got 3 right in a row.";
+  stream && stream.getTracks().forEach(t => t.stop());
+  showWin("myai", {
+    en: "You built an AI! It learned from the examples you gave it. Few or similar examples make it confused. More different examples make it smarter."
+  }, "🤖", {
+    html: '<button class="btn cyan" id="printCert" style="margin:0 0 14px">🖨 Print my certificate</button>',
+    bind: win => { win.querySelector("#printCert").onclick = () => window.print(); }
+  });
+}
+
+buildTopbar(T, "title");
+</script>
+</body>
+</html>
